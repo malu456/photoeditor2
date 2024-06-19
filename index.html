@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh; /* Full viewport height */
+      margin: 0;
+      background-color: #f0f0f0; /* Light gray background */
+    }
+  
+    h1 {
+      text-align: center;
+      margin-top: 20px;
+    }
+  
+    .hidden {
+      display: none;
+    }
+  
+    .image-container {
+      position: relative;
+      display: inline-block;
+      margin-top: 20px;
+      text-align: center; /* Center contents inside */
+    }
+  
+    canvas {
+      border: 1px solid #ccc;
+      display: block;
+      margin: 0 auto; /* Center the canvas */
+    }
+  
+    .buttons {
+      text-align: center;
+      margin-top: 10px;
+    }
+  
+    .buttons button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #4CAF50; /* Green background */
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background-color 0.3s ease;
+    }
+  
+    .buttons button:hover {
+      background-color: #45a049; /* Darker green on hover */
+    }
+  
+    .button-container {
+      margin-top: 20px;
+      text-align: center;
+    }
+  
+    .button-container .button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #008CBA; /* Blue background */
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background-color 0.3s ease;
+    }
+  
+    .button-container .button:hover {
+      background-color: #005A80; /* Darker blue on hover */
+    }
+  
+    .message {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(255, 255, 255, 0.8);
+      padding: 5px;
+      display: none;
+      text-align: center;
+      width: auto;
+      border-radius: 4px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+  
+    .button-container .hidden {
+      display: none;
+    }
+  
+    #editButton {
+      background-color: #f44336; /* Red */
+    }
+  
+    #editButton:hover {
+      background-color: #d32f2f; /* Darker red on hover */
+    }
+  
+    #saveButton {
+      background-color: #FF9800; /* Orange */
+    }
+  
+    #saveButton:hover {
+      background-color: #F57C00; /* Darker orange on hover */
+    }
+  
+    #load-photo-button {
+      background-color: #673AB7; /* Purple */
+    }
+  
+    #load-photo-button:hover {
+      background-color: #512DA8; /* Darker purple on hover */
+    }
+  
+    #hide-shapes-button,
+    #show-shapes-button {
+      background-color: #FF5722; /* Deep Orange */
+    }
+  
+    #hide-shapes-button:hover,
+    #show-shapes-button:hover {
+      background-color: #E64A19; /* Darker deep orange on hover */
+    }
+  
+    #colorPicker {
+      margin-top: 10px;
+    }
+  
+  </style>
+  
+</head>
+<body>
+  <h1>Photo editor section</h1>
+  <input type="file" id="uploadInput" accept=".png, .jpg, .jpeg" onchange="handleFileSelect(event)">
+  <canvas id="canvas"></canvas>
+  <div class="buttons">
+    <!-- <label for="colorPicker">Shape Color: </label> -->
+    <input type="color" id="colorPicker" class="hidden" onchange="setColor()"><br>
+    <button id="editButton" onclick="toggleEditMode()">Edit</button>
+    <button id="drawCircleBtn" class="hidden" onclick="setDrawMode('circle')">Draw Circle</button>
+    <button id="drawSquareBtn" class="hidden" onclick="setDrawMode('square')">Draw Square</button>
+    <button id="eraseAllBtn" class="hidden" onclick="eraseAll()">Erase All</button><br>
+    
+    <button id="saveButton" onclick="saveEditedImage()" disabled>Save</button>
+  </div>
+
+  <h1>Photo check section</h1>
+
+  <div class="button-container">
+    <button id="load-photo-button" class="button">Load Edited Photo</button>
+    <button id="hide-shapes-button" class="button hidden" disabled>Hide Shapes</button>
+    <button id="show-shapes-button" class="button hidden" disabled>Show Shapes</button>
+  </div>
+
+  <div id="image-container-check" class="image-container">
+    <canvas id="checkCanvas"></canvas>
+    <div class="message" id="message">Wrong!</div>
+  </div>
+
+  <script>
+    let canvas, ctx, editMode = false;
+    let shapes = []; // Array to store shapes (circles and squares)
+    let img; // Define img globally to use in redrawCanvas()
+    let drawMode = 'circle'; // Default draw mode
+    let resizeHandleRadius = 6; // Radius of resize handles
+    let messageTimeout;
+    let originalFileName; // To store original file name for saving edited image
+    let shapeColor = '#000000'; // Default shape color (black)
+
+    // Variables for resizing shapes
+    let isResizing = false;
+    let resizeShapeIndex = -1;
+    let resizeStartX, resizeStartY;
+
+    // Initialize canvas and context
+    window.onload = function() {
+      canvas = document.getElementById('canvas');
+      ctx = canvas.getContext('2d');
+    }
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function(event) {
+        img = new Image();
+        img.onload = function() {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+        }
+        img.src = event.target.result;
+        originalFileName = file.name; // Store original file name for saving edited image
+      }
+
+      reader.readAsDataURL(file);
+    }
+
+    function toggleEditMode() {
+      editMode = !editMode;
+      if (editMode) {
+        document.getElementById('editButton').textContent = 'Exit Edit';
+        document.getElementById('drawCircleBtn').classList.remove('hidden');
+        document.getElementById('drawSquareBtn').classList.remove('hidden');
+        document.getElementById('eraseAllBtn').classList.remove('hidden');
+        document.getElementById('colorPicker').classList.remove('hidden');
+        canvas.addEventListener('mousedown', startShape);
+        canvas.addEventListener('mousemove', resizeShape);
+        canvas.addEventListener('mouseup', endShape);
+      } else {
+        document.getElementById('editButton').textContent = 'Edit';
+        document.getElementById('drawCircleBtn').classList.add('hidden');
+        document.getElementById('drawSquareBtn').classList.add('hidden');
+        document.getElementById('eraseAllBtn').classList.add('hidden');
+        document.getElementById('colorPicker').classList.add('hidden');
+        canvas.removeEventListener('mousedown', startShape);
+        canvas.removeEventListener('mousemove', resizeShape);
+        canvas.removeEventListener('mouseup', endShape);
+        isResizing = false;
+        resizeShapeIndex = -1;
+        document.getElementById('saveButton').disabled = false; // Enable save button after editing
+      }
+    }
+
+    function startShape(event) {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      if (drawMode === 'circle') {
+        shapes.push({ type: 'circle', x, y, radius: 20, color: shapeColor }); // Adjust radius as needed
+      } else if (drawMode === 'square') {
+        shapes.push({ type: 'square', x, y, size: 40, color: shapeColor }); // Adjust size as needed
+      }
+
+      // Check if user is resizing an existing shape
+      for (let i = 0; i < shapes.length; i++) {
+        const shape = shapes[i];
+        if (shape.type === 'circle') {
+          const dx = x - shape.x;
+          const dy = y - shape.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= shape.radius) {
+            isResizing = true;
+            resizeShapeIndex = i;
+            resizeStartX = x;
+            resizeStartY = y;
+            break;
+          }
+        } else if (shape.type === 'square') {
+          const halfSize = shape.size / 2;
+          if (x >= shape.x - halfSize && x <= shape.x + halfSize &&
+              y >= shape.y - halfSize && y <= shape.y + halfSize) {
+            isResizing = true;
+            resizeShapeIndex = i;
+            resizeStartX = x;
+            resizeStartY = y;
+            break;
+          }
+        }
+      }
+      redrawCanvas();
+    }
+
+    function resizeShape(event) {
+      if (isResizing && resizeShapeIndex !== -1) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+
+        const shape = shapes[resizeShapeIndex];
+        if (shape.type === 'circle') {
+          const dx = mouseX - shape.x;
+          const dy = mouseY - shape.y;
+          shape.radius = Math.sqrt(dx * dx + dy * dy);
+        } else if (shape.type === 'square') {
+          const dx = mouseX - resizeStartX;
+          const dy = mouseY - resizeStartY;
+          shape.size = Math.max(Math.abs(dx), Math.abs(dy)) * 2;
+        }
+
+        redrawCanvas();
+      }
+    }
+
+    function endShape() {
+      isResizing = false;
+      resizeShapeIndex = -1;
+      redrawCanvas();
+    }
+
+    function eraseAll() {
+      shapes = []; // Clear all shapes
+      redrawCanvas();
+    }
+
+    function redrawCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+
+      shapes.forEach(shape => {
+        ctx.strokeStyle = shape.color;
+        ctx.beginPath();
+        if (shape.type === 'circle') {
+          ctx.arc(shape.x, shape.y, shape.radius, 0, 2 * Math.PI);
+        } else if (shape.type === 'square') {
+          ctx.rect(shape.x - shape.size/2, shape.y - shape.size/2, shape.size, shape.size);
+        }
+        ctx.stroke();
+      });
+    }
+
+    function saveEditedImage() {
+      const dataURL = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = originalFileName.replace(/\.[^/.]+$/, "") + '_Edited1.png'; // Append _Edited1 to original file name
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      document.getElementById('saveButton').disabled = true; // Disable save button after saving
+    }
+
+    function setDrawMode(mode) {
+      drawMode = mode;
+    }
+
+    function setColor() {
+      shapeColor = document.getElementById('colorPicker').value;
+    }
+
+    // Load edited photo into check canvas
+    function loadEditedPhoto() {
+      const editedImg = new Image();
+      editedImg.onload = function() {
+        const checkCanvas = document.getElementById('checkCanvas');
+        checkCanvas.width = img.width;
+        checkCanvas.height = img.height;
+        const checkCtx = checkCanvas.getContext('2d');
+        checkCtx.drawImage(editedImg, 0, 0);
+
+        // Enable show/hide buttons
+        document.getElementById('hide-shapes-button').classList.remove('hidden');
+        document.getElementById('show-shapes-button').classList.remove('hidden');
+        document.getElementById('hide-shapes-button').disabled = false;
+        document.getElementById('show-shapes-button').disabled = false;
+      };
+      editedImg.src = canvas.toDataURL(); // Get edited canvas as image
+    }
+
+    // Function to toggle visibility of circles and squares
+    function toggleShapesVisibility(show) {
+      const checkCanvas = document.getElementById('checkCanvas');
+      const checkCtx = checkCanvas.getContext('2d');
+      checkCtx.clearRect(0, 0, checkCanvas.width, checkCanvas.height);
+
+      shapes.forEach(shape => {
+        if (show) {
+          checkCtx.strokeStyle = shape.color;
+          checkCtx.beginPath();
+          if (shape.type === 'circle') {
+            checkCtx.arc(shape.x, shape.y, shape.radius, 0, 2 * Math.PI);
+          } else if (shape.type === 'square') {
+            checkCtx.rect(shape.x - shape.size/2, shape.y - shape.size/2, shape.size, shape.size);
+          }
+          checkCtx.stroke();
+        }
+      });
+    }
+
+    // Event listeners for buttons
+    document.getElementById('load-photo-button').addEventListener('click', loadEditedPhoto);
+
+    document.getElementById('hide-shapes-button').addEventListener('click', function() {
+      toggleShapesVisibility(false);
+    });
+
+    document.getElementById('show-shapes-button').addEventListener('click', function() {
+      toggleShapesVisibility(true);
+    });
+
+    // Handle click to check circles or squares
+    document.getElementById('image-container-check').addEventListener('click', function(event) {
+      const checkCanvas = document.getElementById('checkCanvas');
+      const checkCtx = checkCanvas.getContext('2d');
+      const rect = checkCanvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      let found = false;
+      shapes.forEach(shape => {
+        if (shape.type === 'circle') {
+          const dx = mouseX - shape.x;
+          const dy = mouseY - shape.y;
+          if (Math.sqrt(dx * dx + dy * dy) <= shape.radius) {
+            found = true;
+          }
+        } else if (shape.type === 'square') {
+          const halfSize = shape.size / 2;
+          if (mouseX >= shape.x - halfSize && mouseX <= shape.x + halfSize &&
+              mouseY >= shape.y - halfSize && mouseY <= shape.y + halfSize) {
+            found = true;
+          }
+        }
+      });
+
+      if (found) {
+        showMessage('Correct!');
+        toggleShapesVisibility(true); // Show hidden shape
+      } else {
+        showMessage('Wrong!');
+      }
+    });
+
+    function showMessage(msg) {
+      const message = document.getElementById('message');
+      message.textContent = msg;
+      message.style.display = 'block';
+      clearTimeout(messageTimeout);
+      messageTimeout = setTimeout(() => {
+        message.style.display = 'none';
+      }, 2000); // Hide message after 2 seconds
+    }
+    
+
+  </script>
+  
+</body>
+</html>
